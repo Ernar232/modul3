@@ -1,0 +1,169 @@
+namespace ProductApp.Models
+{
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+    }
+}
+using ProductApp.Models;
+using System.Collections.Generic;
+
+namespace ProductApp.Services
+{
+    public interface IProductService
+    {
+        IEnumerable<Product> GetAll();
+        Product? GetById(int id);
+        Product Add(Product product);
+        bool Delete(int id);
+    }
+}
+using ProductApp.Models;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace ProductApp.Services
+{
+    public class ProductService : IProductService
+    {
+        private readonly List<Product> _products = new()
+        {
+            nis = new Product { Id = 1, Name = "Laptop", Price = 450000m },
+            new Product { Id = 2, Name = "Mouse", Price = 15000m },
+            new Product { Id = 3, Name = "Keyboard", Price = 25000m }
+        };
+
+        public IEnumerable<Product> GetAll() => _products;
+
+        public Product? GetById(int id) => _products.FirstOrDefault(p => p.Id == id);
+
+        public Product Add(Product product)
+        {
+            product.Id = _products.Any() ? _products.Max(p => p.Id) + 1 : 1;
+            _products.Add(product);
+            return product;
+        }
+
+        public bool Delete(int id)
+        {
+            var product = GetById(id);
+            if (product == null) return false;
+            _products.Remove(product);
+            return true;
+        }
+    }
+}
+using ProductApp.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Настройка провайдеров логирования
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Регистрация сервиса с жизненным циклом Scoped (согласно заданию)
+builder.Services.AddScoped<IProductService, ProductService>();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using ProductApp.Models;
+using ProductApp.Services;
+using System;
+using System.Collections.Generic;
+
+namespace ProductApp.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ProductsController : ControllerBase
+    {
+        private readonly IProductService _productService;
+        private readonly ILogger<ProductsController> _logger;
+
+        // Constructor Injection
+        public ProductsController(IProductService productService, ILogger<ProductsController> logger)
+        {
+            _productService = productService;
+            _logger = logger;
+        }
+
+        [HttpGet]
+        public ActionResult<IEnumerable<Product>> GetAll()
+        {
+            _logger.LogInformation("Getting all products");
+            return Ok(_productService.GetAll());
+        }
+
+        [HttpGet("{id}")]
+        public ActionResult<Product> GetById(int id)
+        {
+            try
+            {
+                // Пример реализации дополнительного задания с исключением
+                if (id == -999) throw new Exception("Simulated critical database error");
+
+                var product = _productService.GetById(id);
+                if (product == null)
+                {
+                    _logger.LogWarning("Product with ID {ProductId} was not found", id);
+                    return NotFound(new { message = $"Товар с ID {id} не найден" });
+                }
+
+                _logger.LogInformation("Product with ID {ProductId} was found", id);
+                return Ok(product);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while processing product with ID {ProductId}", id);
+                return StatusCode(500, new { message = "Произошла внутренняя ошибка сервера." });
+            }
+        }
+
+        [HttpPost]
+        public ActionResult<Product> Add([FromBody] Product product)
+        {
+            if (product == null || string.IsNullOrWhiteSpace(product.Name))
+            {
+                return BadRequest(new { message = "Некорректные данные товара" });
+            }
+
+            var createdProduct = _productService.Add(product);
+            _logger.LogInformation("Product {ProductName} was created", createdProduct.Name);
+            return CreatedAtAction(nameof(GetById), new { id = createdProduct.Id }, createdProduct);
+        }
+
+        [HttpDelete("{id}")]
+        public ActionResult Delete(int id)
+        {
+            var success = _productService.Delete(id);
+            if (!success)
+            {
+                _logger.LogWarning("Product with ID {ProductId} was not found for deletion", id);
+                return NotFound(new { message = $"Товар с ID {id} не найден" });
+            }
+
+            _logger.LogInformation("Product with ID {ProductId} was deleted", id);
+            return NoContent();
+        }
+    }
+}
