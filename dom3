@@ -1,0 +1,111 @@
+namespace StudentApp.Models
+{
+    public class Student
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Group { get; set; } = string.Empty;
+    }
+}
+using StudentApp.Models;
+using System.Collections.Generic;
+
+namespace StudentApp.Services
+{
+    public interface IStudentService
+    {
+        IEnumerable<Student> GetAll();
+        Student? GetById(int id);
+    }
+}
+using StudentApp.Models;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace StudentApp.Services
+{
+    public class StudentService : IStudentService
+    {
+        private readonly List<Student> _students = new()
+        {
+            new Student { Id = 1, Name = "Алижан", Group = "IS-21" },
+            new Student { Id = 2, Name = "Аружан", Group = "SE-22" },
+            new Student { Id = 3, Name = "Тимур", Group = "CS-23" }
+        };
+
+        public IEnumerable<Student> GetAll() => _students;
+
+        public Student? GetById(int id) => _students.FirstOrDefault(s => s.Id == id);
+    }
+}
+using StudentApp.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Добавление сервисов контроллеров и Swagger
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Регистрация зависимости IStudentService с жизненным циклом Transient
+builder.Services.AddTransient<IStudentService, StudentService>();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using StudentApp.Models;
+using StudentApp.Services;
+using System.Collections.Generic;
+
+namespace StudentApp.Controllers
+{
+    [Route("api/students")]
+    [ApiController]
+    public class StudentsController : ControllerBase
+    {
+        private readonly IStudentService _studentService;
+        private readonly ILogger<StudentsController> _logger;
+
+        // Constructor Injection
+        public StudentsController(IStudentService studentService, ILogger<StudentsController> logger)
+        {
+            _studentService = studentService;
+            _logger = logger;
+        }
+
+        [HttpGet]
+        public ActionResult<IEnumerable<Student>> GetAllStudents()
+        {
+            _logger.LogInformation("Запрос на получение списка всех студентов");
+            var students = _studentService.GetAll();
+            return Ok(students);
+        }
+
+        [HttpGet("{id}")]
+        public ActionResult<Student> GetStudentById(int id)
+        {
+            _logger.LogInformation("Запрос на получение студента с ID {StudentId}", id);
+            
+            var student = _studentService.GetById(id);
+            if (student == null)
+            {
+                _logger.LogWarning("Student with ID {StudentId} was not found", id);
+                return NotFound(new { message = $"Студент с ID {id} не найден" });
+            }
+
+            return Ok(student);
+        }
+    }
+}
